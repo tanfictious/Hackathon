@@ -1,18 +1,24 @@
 import requests
 import psycopg2
+import os
+from dotenv import load_dotenv
+from datetime import datetime
+
+# Load environment variables
+load_dotenv()
 
 # API key and endpoint setup
-API_KEY = "c20a298f91e5fb5f8dd6528574d09023"  # Your API key
+API_KEY = os.getenv('OPENWEATHER_API_KEY')
 BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 # Database connection
 try:
     connection = psycopg2.connect(
-        dbname="weather_db",          # Database name
-        user="tanmaykajrolkar",       # PostgreSQL username
-        password="tanmay@iscool123",  # Your PostgreSQL password
-        host="localhost",
-        port="5432"
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST'),
+        port=os.getenv('DB_PORT')
     )
     cursor = connection.cursor()
     print("Database connected successfully.")
@@ -37,40 +43,52 @@ def fetch_weather(city_name):
 # Function to save weather data to the database
 def save_weather_data(data):
     try:
-        # Ensure the table exists before inserting data
+        # Create table if it doesn't exist
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS weather (
+        CREATE TABLE IF NOT EXISTS weather_data (
             id SERIAL PRIMARY KEY,
-            city VARCHAR(100),
             temperature DECIMAL,
+            humidity DECIMAL,
+            pressure DECIMAL,
+            wind_speed DECIMAL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             description TEXT
         );
         """)
         
         query = """
-        INSERT INTO weather (city, temperature, description)
-        VALUES (%s, %s, %s);
+        INSERT INTO weather_data (temperature, humidity, pressure, wind_speed, description)
+        VALUES (%s, %s, %s, %s, %s);
         """
         values = (
-            data['name'],                 # City name
-            data['main']['temp'],         # Temperature
-            data['weather'][0]['description']  # Weather description
+            data['main']['temp'],
+            data['main']['humidity'],
+            data['main']['pressure'],
+            data['wind']['speed'],
+            data['weather'][0]['description']
         )
         cursor.execute(query, values)
         connection.commit()
-        print(f"Weather data for {data['name']} saved successfully.")
+        print(f"Weather data saved successfully.")
     except Exception as e:
         print(f"Error saving data to the database: {e}")
 
-# Main program
-if __name__ == "__main__":
-    city = input("Enter a city name: ")
-    weather_data = fetch_weather(city)
-    if weather_data:
-        save_weather_data(weather_data)
+def main():
+    try:
+        while True:
+            city = input("Enter a city name (or 'quit' to exit): ")
+            if city.lower() == 'quit':
+                break
+                
+            weather_data = fetch_weather(city)
+            if weather_data:
+                save_weather_data(weather_data)
+                
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
+            print("Database connection closed.")
 
-# Close database connection
-if connection:
-    cursor.close()
-    connection.close()
-    print("Database connection closed.")
+if __name__ == "__main__":
+    main()
